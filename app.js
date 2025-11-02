@@ -5,7 +5,8 @@
 const express = require('express');
 const cors = require('cors');
 const apiRoutes = require('./src/routes'); // Our main API router
-
+const errorHandler = require('./src/middleware/errorHandler');
+const AppError = require('./src/utils/AppError');
 const app = express();
 
 // --- Core Middleware ---
@@ -28,5 +29,16 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// --- 404 Not Found Handler ---
+// This middleware will run for any request that doesn't
+// match a route defined above.
+app.use((req, res, next) => {
+  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
+});
+
+// --- Global Error Handler ---
+// This is our *final* middleware. All errors get passed to this.
+app.use(errorHandler);
 
 module.exports = app;

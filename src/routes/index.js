@@ -3,10 +3,13 @@
 
 const express = require('express');
 const router = express.Router();
+const authRoutes = require('./auth.routes');
 
 // --- Health Check for API ---
 router.get('/', (req, res) => {
   res.json({ message: 'Welcome to the RecipeShare API v1' });
 });
+
+router.use('/auth', authRoutes);
 
 module.exports = router;
