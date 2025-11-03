@@ -1,31 +1,107 @@
 const Recipe = require('../models/Recipe.model');
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
+const cloudinary = require('../config/cloudinary');
 
+// A helper function to upload the buffer to Cloudinary
+const uploadToCloudinary = (buffer) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'recipe_share', // Optional: organize images in a folder
+        resource_type: 'image',
+      },
+      (error, result) => {
+        if (error) {
+          reject(new AppError('Image upload to Cloudinary failed', 500));
+        } else {
+          resolve(result);
+        }
+      },
+    );
+    // Send the buffer to Cloudinary
+    uploadStream.end(buffer);
+  });
+};
+
+// /**
+//  * @desc    Create a new recipe
+//  * @route   POST /api/recipes
+//  * @access  Private
+//  */
+// const createRecipe = asyncHandler(async (req, res, next) => {
+//   const { title, description, prepTime, cookTime, ingredients, instructions } =
+//     req.body;
+
+//   // Basic validation (express-validator can be added later)
+//   if (
+//     !title ||
+//     !description ||
+//     !prepTime ||
+//     !cookTime ||
+//     !ingredients ||
+//     !instructions
+//   ) {
+//     return next(new AppError('Please provide all required fields', 400));
+//   }
+
+//   // The 'protect' middleware gives us req.user
+//   const author = req.user._id;
+
+//   const recipe = await Recipe.create({
+//     title,
+//     description,
+//     prepTime,
+//     cookTime,
+//     ingredients,
+//     instructions,
+//     author,
+//   });
+
+//   res.status(201).json({
+//     status: 'success',
+//     data: {
+//       recipe,
+//     },
+//   });
+// });
 /**
  * @desc    Create a new recipe
  * @route   POST /api/recipes
  * @access  Private
  */
 const createRecipe = asyncHandler(async (req, res, next) => {
-  const { title, description, prepTime, cookTime, ingredients, instructions } =
-    req.body;
+  // 1. Get text data from req.body
+  //    NOTE: Because we use 'multer', all fields are text.
+  const { title, description, prepTime, cookTime, instructions } = req.body;
+  let ingredients;
 
-  // Basic validation (express-validator can be added later)
-  if (
-    !title ||
-    !description ||
-    !prepTime ||
-    !cookTime ||
-    !ingredients ||
-    !instructions
-  ) {
-    return next(new AppError('Please provide all required fields', 400));
+  // 2. Safely parse the 'ingredients' string
+  try {
+    ingredients = JSON.parse(req.body.ingredients);
+  } catch (e) {
+    return next(
+      new AppError('Invalid ingredients format. Must be a JSON string.', 400),
+    );
   }
 
-  // The 'protect' middleware gives us req.user
   const author = req.user._id;
+  let recipeImageData = {};
 
+  // 3. Check if a file was uploaded (req.file)
+  if (req.file) {
+    try {
+      const uploadResult = await uploadToCloudinary(req.file.buffer);
+      recipeImageData = {
+        recipeImage: uploadResult.secure_url,
+        recipeImageId: uploadResult.public_id,
+      };
+    } catch (uploadError) {
+      return next(uploadError);
+    }
+  }
+
+  // 4. Create the recipe with all data
   const recipe = await Recipe.create({
     title,
     description,
@@ -34,6 +110,7 @@ const createRecipe = asyncHandler(async (req, res, next) => {
     ingredients,
     instructions,
     author,
+    ...recipeImageData, // Add image data if it exists
   });
 
   res.status(201).json({
@@ -140,6 +217,59 @@ const getRecipeById = asyncHandler(async (req, res, next) => {
   });
 });
 
+// /**
+//  * @desc    Update an existing recipe
+//  * @route   PUT /api/recipes/:id
+//  * @access  Private
+//  */
+// const updateRecipe = asyncHandler(async (req, res, next) => {
+//   const { id } = req.params;
+//   const { title, description, prepTime, cookTime, ingredients, instructions } =
+//     req.body;
+
+//   // 1. Find the recipe by its ID
+//   const recipe = await Recipe.findById(id);
+
+//   // 2. Check if the recipe exists
+//   if (!recipe) {
+//     return next(new AppError('No recipe found with that ID', 404));
+//   }
+
+//   // 3. --- AUTHORIZATION CHECK ---
+//   // Check if the logged-in user (req.user) is the author
+//   // We must convert the ObjectId to a string for comparison
+//   if (recipe.author.toString() !== req.user._id.toString()) {
+//     return next(
+//       new AppError('You are not authorized to edit this recipe', 403), // 403 Forbidden
+//     );
+//   }
+
+//   // 4. If checks pass, update the recipe
+//   // We use findByIdAndUpdate which is more efficient
+//   const updatedRecipe = await Recipe.findByIdAndUpdate(
+//     id,
+//     {
+//       title,
+//       description,
+//       prepTime,
+//       cookTime,
+//       ingredients,
+//       instructions,
+//     },
+//     {
+//       new: true, // This option returns the modified document
+//       runValidators: true, // This runs our Mongoose model validators
+//     },
+//   ).populate('author', 'username'); // Re-populate the author
+
+//   res.status(200).json({
+//     status: 'success',
+//     data: {
+//       recipe: updatedRecipe,
+//     },
+//   });
+// });
+
 /**
  * @desc    Update an existing recipe
  * @route   PUT /api/recipes/:id
@@ -147,43 +277,58 @@ const getRecipeById = asyncHandler(async (req, res, next) => {
  */
 const updateRecipe = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-  const { title, description, prepTime, cookTime, ingredients, instructions } =
-    req.body;
+  const { title, description, prepTime, cookTime, instructions } = req.body;
+  let ingredients;
 
-  // 1. Find the recipe by its ID
+  // 1. Find the recipe first
   const recipe = await Recipe.findById(id);
-
-  // 2. Check if the recipe exists
   if (!recipe) {
     return next(new AppError('No recipe found with that ID', 404));
   }
 
-  // 3. --- AUTHORIZATION CHECK ---
-  // Check if the logged-in user (req.user) is the author
-  // We must convert the ObjectId to a string for comparison
+  // 2. --- AUTHORIZATION CHECK ---
   if (recipe.author.toString() !== req.user._id.toString()) {
     return next(
-      new AppError('You are not authorized to edit this recipe', 403), // 403 Forbidden
+      new AppError('You are not authorized to edit this recipe', 403),
     );
   }
 
-  // 4. If checks pass, update the recipe
-  // We use findByIdAndUpdate which is more efficient
-  const updatedRecipe = await Recipe.findByIdAndUpdate(
-    id,
-    {
-      title,
-      description,
-      prepTime,
-      cookTime,
-      ingredients,
-      instructions,
-    },
-    {
-      new: true, // This option returns the modified document
-      runValidators: true, // This runs our Mongoose model validators
-    },
-  ).populate('author', 'username'); // Re-populate the author
+  // 3. Prepare updates
+  const updates = { title, description, prepTime, cookTime, instructions };
+
+  // 4. Safely parse 'ingredients' if it was sent
+  if (req.body.ingredients) {
+    try {
+      updates.ingredients = JSON.parse(req.body.ingredients);
+    } catch (e) {
+      return next(
+        new AppError('Invalid ingredients format. Must be a JSON string.', 400),
+      );
+    }
+  }
+
+  // 5. Check if a *new* file was uploaded
+  if (req.file) {
+    try {
+      // 5a. Delete the OLD image from Cloudinary (if it exists)
+      if (recipe.recipeImageId) {
+        await cloudinary.uploader.destroy(recipe.recipeImageId);
+      }
+
+      // 5b. Upload the NEW image
+      const uploadResult = await uploadToCloudinary(req.file.buffer);
+      updates.recipeImage = uploadResult.secure_url;
+      updates.recipeImageId = uploadResult.public_id;
+    } catch (uploadError) {
+      return next(uploadError);
+    }
+  }
+
+  // 6. Perform the update in the database
+  const updatedRecipe = await Recipe.findByIdAndUpdate(id, updates, {
+    new: true,
+    runValidators: true,
+  }).populate('author', 'username');
 
   res.status(200).json({
     status: 'success',
@@ -193,6 +338,39 @@ const updateRecipe = asyncHandler(async (req, res, next) => {
   });
 });
 
+// /**
+//  * @desc    Delete a recipe
+//  * @route   DELETE /api/recipes/:id
+//  * @access  Private
+//  */
+// const deleteRecipe = asyncHandler(async (req, res, next) => {
+//   const { id } = req.params;
+
+//   // 1. Find the recipe by its ID
+//   const recipe = await Recipe.findById(id);
+
+//   // 2. Check if the recipe exists
+//   if (!recipe) {
+//     return next(new AppError('No recipe found with that ID', 404));
+//   }
+
+//   // 3. --- AUTHORIZATION CHECK ---
+//   if (recipe.author.toString() !== req.user._id.toString()) {
+//     return next(
+//       new AppError('You are not authorized to delete this recipe', 403), // 403 Forbidden
+//     );
+//   }
+
+//   // 4. If checks pass, delete the recipe
+//   await recipe.deleteOne(); // Use .deleteOne() on the document
+
+//   res.status(204).json({
+//     // 204 No Content (standard for successful delete)
+//     status: 'success',
+//     data: null,
+//   });
+// });
+
 /**
  * @desc    Delete a recipe
  * @route   DELETE /api/recipes/:id
@@ -200,27 +378,34 @@ const updateRecipe = asyncHandler(async (req, res, next) => {
  */
 const deleteRecipe = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-
-  // 1. Find the recipe by its ID
   const recipe = await Recipe.findById(id);
 
-  // 2. Check if the recipe exists
   if (!recipe) {
     return next(new AppError('No recipe found with that ID', 404));
   }
 
-  // 3. --- AUTHORIZATION CHECK ---
+  // --- AUTHORIZATION CHECK ---
   if (recipe.author.toString() !== req.user._id.toString()) {
     return next(
-      new AppError('You are not authorized to delete this recipe', 403), // 403 Forbidden
+      new AppError('You are not authorized to delete this recipe', 403),
     );
   }
 
-  // 4. If checks pass, delete the recipe
-  await recipe.deleteOne(); // Use .deleteOne() on the document
+  // --- NEW: Delete Image from Cloudinary ---
+  // If the recipe has an image, delete it before deleting the recipe
+  if (recipe.recipeImageId) {
+    try {
+      await cloudinary.uploader.destroy(recipe.recipeImageId);
+    } catch (error) {
+      // Log the error but don't stop the recipe deletion
+      console.error('Cloudinary delete failed:', error.message);
+    }
+  }
+
+  // Delete the recipe from MongoDB
+  await recipe.deleteOne();
 
   res.status(204).json({
-    // 204 No Content (standard for successful delete)
     status: 'success',
     data: null,
   });
