@@ -8,6 +8,9 @@ const {
   deleteRecipe,
 } = require('../controllers/recipe.controller');
 const { protect } = require('../middleware/auth.middleware');
+const { apiLimiter } = require('../middleware/rateLimiter');
+
+router.use(apiLimiter);
 
 // --- Public Routes ---
 router.get('/', getAllRecipes);
