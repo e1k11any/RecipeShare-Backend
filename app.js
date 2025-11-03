@@ -4,12 +4,16 @@
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const apiRoutes = require('./src/routes'); // Our main API router
 const errorHandler = require('./src/middleware/errorHandler');
 const AppError = require('./src/utils/AppError');
 const app = express();
 
 // --- Core Middleware ---
+
+// sets various security headers
+app.use(helmet());
 
 // This allows your React app (running on a different port) to make requests
 app.use(cors());
