@@ -75,7 +75,24 @@ const loginUser = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * @desc    Get the current logged-in user's profile
+ * @route   GET /api/auth/me
+ * @access  Private
+ */
+const getMe = asyncHandler(async (req, res, next) => {
+  // The 'protect' middleware has already run,
+  // so we have 'req.user' available.
+  res.status(200).json({
+    status: 'success',
+    data: {
+      user: req.user,
+    },
+  });
+});
+
 module.exports = {
   registerUser,
   loginUser,
+  getMe,
 };
