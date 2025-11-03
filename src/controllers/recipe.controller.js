@@ -44,23 +44,73 @@ const createRecipe = asyncHandler(async (req, res, next) => {
   });
 });
 
+// /**
+//  * @desc    Get all recipes
+//  * @route   GET /api/recipes
+//  * @access  Public
+//  */
+// const getAllRecipes = asyncHandler(async (req, res, next) => {
+//   // We use .populate() to replace the 'author' ID with the user's document
+//   // We only select the 'username' field from the populated author
+//   const recipes = await Recipe.find()
+//     .populate('author', 'username')
+//     .sort({ createdAt: -1 });
+
+//   res.status(200).json({
+//     status: 'success',
+//     results: recipes.length,
+//     data: {
+//       recipes,
+//     },
+//   });
+// });
+
 /**
- * @desc    Get all recipes
+ * @desc    Get all recipes with pagination
  * @route   GET /api/recipes
  * @access  Public
  */
 const getAllRecipes = asyncHandler(async (req, res, next) => {
-  // We use .populate() to replace the 'author' ID with the user's document
-  // We only select the 'username' field from the populated author
-  const recipes = await Recipe.find()
-    .populate('author', 'username')
-    .sort({ createdAt: -1 });
+  // 1. Get pagination parameters from query string
+  //    We use parseInt to convert string query params to numbers
+  //    We set default values: page 1, limit 10
+  const page = parseInt(req.query.page) || 1;
 
+  // 2. Set a max limit (e.g., 50) to prevent abuse
+  const defaultLimit = 10;
+  const maxLimit = 50;
+  const limit = Math.min(parseInt(req.query.limit) || defaultLimit, maxLimit);
+
+  // 3. Calculate the number of documents to skip
+  const skip = (page - 1) * limit;
+
+  // 4. Get the total count of all recipes for pagination metadata
+  //    We run this as a separate, fast query.
+  const totalItems = await Recipe.countDocuments();
+
+  // 5. Get the recipes for the current page
+  const recipes = await Recipe.find()
+    .populate('author', 'username') // Still populate the author
+    .sort({ createdAt: -1 }) // Still sort by newest
+    .skip(skip) // Apply the skip
+    .limit(limit); // Apply the limit
+
+  // 6. Calculate total pages
+  const totalPages = Math.ceil(totalItems / limit);
+
+  // 7. Send the new, detailed response
   res.status(200).json({
     status: 'success',
-    results: recipes.length,
+    results: recipes.length, // Number of items on this specific page
     data: {
       recipes,
+    },
+    // This new pagination object is for the frontend
+    pagination: {
+      currentPage: page,
+      totalPages: totalPages,
+      totalItems: totalItems,
+      limit: limit,
     },
   });
 });
