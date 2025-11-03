@@ -226,10 +226,73 @@ const deleteRecipe = asyncHandler(async (req, res, next) => {
   });
 });
 
+/**
+ * @desc    Search for recipes with pagination
+ * @route   GET /api/recipes/search
+ * @access  Public
+ */
+const searchRecipes = asyncHandler(async (req, res, next) => {
+  const { q } = req.query;
+
+  // 1. Check if a search query 'q' was provided
+  if (!q) {
+    return next(new AppError('Please provide a search term', 400));
+  }
+
+  // 2. Define the search query for MongoDB
+  const searchQuery = { $text: { $search: q } };
+
+  // 3. Apply pagination (re-using our logic from getAllRecipes)
+  const page = parseInt(req.query.page) || 1;
+  const defaultLimit = 10;
+  const maxLimit = 50;
+  const limit = Math.min(parseInt(req.query.limit) || defaultLimit, maxLimit);
+  const skip = (page - 1) * limit;
+
+  // 4. Get the total count *for the search results*
+  const totalItems = await Recipe.countDocuments(searchQuery);
+
+  // 5. Find the recipes
+  const recipes = await Recipe.find(
+    searchQuery,
+    // --- Projection ---
+    // We add a 'score' field, which is the "relevance"
+    // calculated by MongoDB.
+    { score: { $meta: 'textScore' } },
+  )
+    .populate('author', 'username')
+    // --- Sort by Relevance ---
+    // We sort the results by the 'score' field in descending order
+    // to show the most relevant results first.
+    .sort({ score: { $meta: 'textScore' } })
+    .skip(skip)
+    .limit(limit);
+
+  // 6. Calculate total pages
+  const totalPages = Math.ceil(totalItems / limit);
+
+  // 7. Send the response
+  res.status(200).json({
+    status: 'success',
+    results: recipes.length,
+    data: {
+      recipes,
+    },
+    pagination: {
+      currentPage: page,
+      totalPages: totalPages,
+      totalItems: totalItems,
+      limit: limit,
+      query: q,
+    },
+  });
+});
+
 module.exports = {
   createRecipe,
   getAllRecipes,
   getRecipeById,
   updateRecipe,
   deleteRecipe,
+  searchRecipes,
 };
