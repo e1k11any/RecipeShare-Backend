@@ -50,5 +50,13 @@ const RecipeSchema = new mongoose.Schema(
   },
 );
 
+// --- Add Text Index ---
+// This tells MongoDB to create a text index on the 'title' and 'description' fields
+// This allows for efficient, full-text search.
+RecipeSchema.index({
+  title: 'text',
+  description: 'text',
+});
+
 const Recipe = mongoose.model('Recipe', RecipeSchema);
 module.exports = Recipe;
