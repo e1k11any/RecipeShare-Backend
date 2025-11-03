@@ -44,6 +44,14 @@ const RecipeSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+
+    recipeImage: {
+      type: String, // This will be the URL from Cloudinary
+      default: 'https_placeholder_url', // Add a link to a default placeholder
+    },
+    recipeImageId: {
+      type: String, // This is the public_id from Cloudinary
+    },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt

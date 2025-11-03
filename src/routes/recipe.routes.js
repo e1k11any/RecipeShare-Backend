@@ -10,6 +10,7 @@ const {
 } = require('../controllers/recipe.controller');
 const { protect } = require('../middleware/auth.middleware');
 const { apiLimiter } = require('../middleware/rateLimiter');
+const upload = require('../middleware/upload');
 
 router.use(apiLimiter);
 
@@ -23,10 +24,10 @@ router.get('/search', searchRecipes);
 router.get('/:id', getRecipeById);
 
 // --- Private Routes (Protected) ---
-router.post('/', protect, createRecipe);
+router.post('/', protect, upload.single('image'), createRecipe);
 
 // Update a recipe (needs to be protected)
-router.put('/:id', protect, updateRecipe);
+router.put('/:id', protect, upload.single('image'), updateRecipe);
 
 // Delete a recipe (needs to be protected)
 router.delete('/:id', protect, deleteRecipe);
